@@ -28,7 +28,6 @@ const NODE_PATH = process.execPath;
  * Xử lý cookie YouTube nếu được cấu hình qua file hoặc biến môi trường (rất hữu ích khi deploy Cloud)
  */
 function getCookiesPath() {
-  // Nếu có biến môi trường YOUTUBE_COOKIES, ghi ra file tạm để yt-dlp đọc
   if (process.env.YOUTUBE_COOKIES) {
     const tmpCookies = path.join(os.tmpdir(), 'youtube_cookies.txt');
     try {
@@ -50,12 +49,20 @@ function getCookiesPath() {
 /**
  * Tạo danh sách tham số cơ sở cho yt-dlp
  */
-function getBaseYtDlpArgs() {
+function getBaseYtDlpArgs(platform) {
   const args = [
     '--no-warnings',
     '--no-playlist',
     '--js-runtimes', `node:"${NODE_PATH}"`
   ];
+
+  // Ưu tiên client android/web để giảm thiểu bot check trên dải IP Datacenter
+  if (platform === 'youtube') {
+    args.push(
+      '--extractor-args',
+      'youtube:player_client=android,web;player_skip=configs,webpage'
+    );
+  }
 
   if (FFMPEG_DIR) {
     args.push('--ffmpeg-location', FFMPEG_DIR);
@@ -136,7 +143,7 @@ app.post('/api/download', (req, res) => {
   // Tham số chạy yt-dlp lấy JSON metadata
   const args = [
     '--dump-json',
-    ...getBaseYtDlpArgs(),
+    ...getBaseYtDlpArgs(platform),
     url
   ];
 
@@ -146,8 +153,22 @@ app.post('/api/download', (req, res) => {
       if (err.killed) {
         return res.status(504).json({ error: 'Quá thời gian xử lý khi trích xuất video. Vui lòng thử lại.' });
       }
+
+      const errText = stderr || err.message || '';
+      let userError = 'Không thể trích xuất video. Video có thể ở chế độ riêng tư, đã bị xóa hoặc liên kết không đúng.';
+
+      if (errText.includes("Sign in to confirm you're not a bot") || errText.includes('bot') || errText.includes('HTTP Error 429')) {
+        userError = 'YouTube chặn IP máy chủ Cloud và yêu cầu xác thực Bot. Vui lòng thêm biến môi trường YOUTUBE_COOKIES trên Railway.';
+      } else {
+        const errorLines = errText.split('\n').filter(l => l.includes('ERROR:'));
+        if (errorLines.length > 0) {
+          userError = errorLines.join('; ').replace(/ERROR:\s*/g, '');
+        }
+      }
+
       return res.status(400).json({
-        error: 'Không thể trích xuất video. Video có thể ở chế độ riêng tư, đã bị xóa hoặc liên kết không đúng.'
+        error: userError,
+        details: errText.substring(0, 300)
       });
     }
 
@@ -232,7 +253,8 @@ app.post('/api/download', (req, res) => {
           url: url,
           quality: q.quality,
           type: q.type,
-          title: title
+          title: title,
+          platform: platform
         });
         return {
           ...q,
@@ -246,6 +268,7 @@ app.post('/api/download', (req, res) => {
         quality: '360p',
         type: 'video',
         title: title,
+        platform: platform,
         inline: '1'
       });
       const previewUrl = `${baseUrl}?${previewParams.toString()}`;
@@ -269,7 +292,7 @@ app.post('/api/download', (req, res) => {
  * API tải / stream file video hoặc audio trực tiếp
  */
 app.get('/api/stream', (req, res) => {
-  const { url, quality = '720p', type = 'video', title = 'video', inline } = req.query;
+  const { url, quality = '720p', type = 'video', title = 'video', platform = 'youtube', inline } = req.query;
 
   if (!url) {
     return res.status(400).send('Thiếu tham số URL.');
@@ -288,7 +311,7 @@ app.get('/api/stream', (req, res) => {
   );
 
   let args = [
-    ...getBaseYtDlpArgs()
+    ...getBaseYtDlpArgs(platform)
   ];
 
   if (isAudio) {
