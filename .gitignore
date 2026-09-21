@@ -1,0 +1,16 @@
+# Phụ thuộc và thư mục build
+node_modules/
+npm-debug.log*
+
+# File thực thi Windows nội bộ (không đẩy lên git vì dung lượng lớn)
+bin/*.exe
+bin/*.7z
+
+# File dữ liệu nhạy cảm / cấu hình môi trường
+.env
+cookies.txt
+*.log
+
+# Hệ điều hành
+Thumbs.db
+.DS_Store

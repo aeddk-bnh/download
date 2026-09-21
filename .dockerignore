@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log
+bin/*.exe
+bin/*.7z
+cookies.txt
+.git
+.gitignore
+.env
+*.log

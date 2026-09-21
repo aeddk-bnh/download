@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Video Downloader - Tải Video Facebook & YouTube</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --fb-primary: #1877f2;
+      --fb-hover: #166fe5;
+      --yt-primary: #ff0000;
+      --yt-hover: #cc0000;
+      --bg: #f0f2f5;
+      --card-bg: #ffffff;
+      --text: #1c1e21;
+      --text-secondary: #65676b;
+      --border: #dddfe2;
+      --success: #42b72a;
+      --error: #ff4d4d;
+      --radius: 12px;
+      --shadow: 0 2px 14px rgba(0, 0, 0, 0.08);
+      --primary: var(--fb-primary);
+      --primary-hover: var(--fb-hover);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 600px;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .header .logo {
+      width: 60px;
+      height: 60px;
+      background: var(--primary);
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      transition: background 0.3s;
+    }
+
+    .header .logo svg {
+      width: 30px;
+      height: 30px;
+      fill: #fff;
+    }
+
+    .header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+
+    .header p {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    /* Platform Tabs */
+    .platform-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      justify-content: center;
+    }
+
+    .tab {
+      padding: 9px 24px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 2px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text-secondary);
+      transition: all 0.25s ease;
+      user-select: none;
+    }
+
+    .tab:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .tab.active-fb {
+      background: var(--fb-primary);
+      border-color: var(--fb-primary);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(24, 119, 242, 0.35);
+    }
+
+    .tab.active-yt {
+      background: var(--yt-primary);
+      border-color: var(--yt-primary);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(255, 0, 0, 0.35);
+    }
+
+    /* Card */
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    /* Input group */
+    .input-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .input-group input {
+      flex: 1;
+      padding: 13px 16px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input-group input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.12);
+    }
+
+    .input-group input::placeholder {
+      color: #8c939d;
+    }
+
+    .btn {
+      padding: 13px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-primary:disabled {
+      background: #a4b8cc;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Status */
+    .status {
+      margin-top: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      line-height: 1.4;
+    }
+
+    .status.visible {
+      display: flex;
+    }
+
+    .status.info {
+      background: #e7f3ff;
+      color: #0b63ce;
+      border: 1px solid #cce4ff;
+    }
+
+    .status.error {
+      background: #ffeaea;
+      color: #d32f2f;
+      border: 1px solid #ffd0d0;
+    }
+
+    .status.success {
+      background: #eaffef;
+      color: #2e7d32;
+      border: 1px solid #c8f5d0;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Result Card */
+    .result {
+      display: none;
+    }
+
+    .result.visible {
+      display: block;
+    }
+
+    .video-info {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .video-thumbnail {
+      width: 120px;
+      height: 68px;
+      border-radius: 6px;
+      object-fit: cover;
+      background: #000;
+      flex-shrink: 0;
+    }
+
+    .video-details {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .video-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+
+    .video-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .video-preview {
+      width: 100%;
+      border-radius: 8px;
+      background: #000;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+
+    .video-preview video {
+      width: 100%;
+      max-height: 360px;
+      display: block;
+    }
+
+    .download-section-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+    }
+
+    .download-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .download-option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: #f7f8fa;
+      border: 1px solid #eef0f3;
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--text);
+      transition: all 0.2s;
+    }
+
+    .download-option:hover {
+      background: #eef2f8;
+      border-color: #d5dfea;
+      transform: translateY(-1px);
+    }
+
+    .download-option .opt-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .download-option .badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #e4e6eb;
+      color: #333;
+    }
+
+    .download-option.audio .badge {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .download-option .quality {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .download-option .size {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .download-option .download-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--primary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.3s;
+      flex-shrink: 0;
+    }
+
+    .download-option .download-icon svg {
+      width: 16px;
+      height: 16px;
+      fill: #fff;
+    }
+
+    /* Features */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .feature {
+      text-align: center;
+      padding: 12px 6px;
+    }
+
+    .feature .icon {
+      font-size: 24px;
+      margin-bottom: 6px;
+    }
+
+    .feature h3 {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .feature p {
+      font-size: 11px;
+      color: var(--text-secondary);
+      line-height: 1.3;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo" id="logo">
+        <!-- Facebook icon (default) -->
+        <svg id="fbIcon" viewBox="0 0 24 24">
+          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+        </svg>
+        <!-- YouTube icon (hidden) -->
+        <svg id="ytIcon" viewBox="0 0 24 24" style="display:none">
+          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+        </svg>
+      </div>
+      <h1 id="mainTitle">Video Downloader</h1>
+      <p id="mainDesc">Tải video Facebook & YouTube chất lượng cao miễn phí, nhanh chóng</p>
+    </div>
+
+    <!-- Platform Tabs -->
+    <div class="platform-tabs">
+      <div class="tab active-fb" id="tabFb" data-platform="facebook">Facebook</div>
+      <div class="tab" id="tabYt" data-platform="youtube">YouTube</div>
+    </div>
+
+    <!-- Input Card -->
+    <div class="card">
+      <div class="input-group">
+        <input type="text" id="urlInput" placeholder="Dán link video Facebook (Watch, Reels, Share...) tại đây..." autocomplete="off" />
+        <button class="btn btn-primary" id="fetchBtn">Tải về</button>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <!-- Result Card -->
+    <div class="card result" id="resultCard">
+      <!-- Video Metadata Header -->
+      <div class="video-info">
+        <img id="videoThumb" class="video-thumbnail" src="" alt="Thumbnail" />
+        <div class="video-details">
+          <div id="videoTitle" class="video-title">Tiêu đề video</div>
+          <div class="video-meta">
+            <span id="videoAuthor"></span>
+            <span id="videoDuration"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Video Preview -->
+      <div class="video-preview">
+        <video id="videoPreview" controls preload="none"></video>
+      </div>
+
+      <!-- Download Options List -->
+      <div class="download-section-title">Chọn chất lượng để tải về máy:</div>
+      <div class="download-options" id="downloadOptions"></div>
+    </div>
+
+    <!-- Features -->
+    <div class="card features">
+      <div class="feature">
+        <div class="icon">⚡</div>
+        <h3>Tốc độ cao</h3>
+        <p>Phân giải link tức thì và tải luồng trực tiếp</p>
+      </div>
+      <div class="feature">
+        <div class="icon">🎬</div>
+        <h3>Full HD & Âm thanh</h3>
+        <p>Hỗ trợ độ nét cao lên đến 1080p và tách MP3</p>
+      </div>
+      <div class="feature">
+        <div class="icon">🔒</div>
+        <h3>An toàn & Miễn phí</h3>
+        <p>Không lưu trữ dữ liệu cá nhân, tải trực tiếp</p>
+      </div>
+    </div>
+
+    <div class="footer">
+      Công cụ hỗ trợ tải video cá nhân. Vui lòng tôn trọng bản quyền của tác giả nội dung.
+    </div>
+  </div>
+
+  <script>
+    const urlInput = document.getElementById('urlInput');
+    const fetchBtn = document.getElementById('fetchBtn');
+    const statusEl = document.getElementById('status');
+    const resultCard = document.getElementById('resultCard');
+    const videoPreview = document.getElementById('videoPreview');
+    const videoThumb = document.getElementById('videoThumb');
+    const videoTitle = document.getElementById('videoTitle');
+    const videoAuthor = document.getElementById('videoAuthor');
+    const videoDuration = document.getElementById('videoDuration');
+    const downloadOptions = document.getElementById('downloadOptions');
+    const logo = document.getElementById('logo');
+    const fbIcon = document.getElementById('fbIcon');
+    const ytIcon = document.getElementById('ytIcon');
+    const tabFb = document.getElementById('tabFb');
+    const tabYt = document.getElementById('tabYt');
+
+    let currentPlatform = 'facebook';
+
+    const PLATFORM_CONFIG = {
+      facebook: {
+        primary: '#1877f2',
+        hover: '#166fe5',
+        tabClass: 'active-fb',
+        placeholder: 'Dán link video Facebook (Watch, Reels, Share...) tại đây...',
+        errEmpty: 'Vui lòng dán liên kết video Facebook.',
+        errInvalid: 'Liên kết không hợp lệ. Vui lòng dán đúng liên kết Facebook (facebook.com, fb.watch...).',
+        loading: 'Đang trích xuất video Facebook, vui lòng chờ trong giây lát...',
+        success: 'Trích xuất video thành công! Nhấn vào chất lượng bên dưới để tải về.'
+      },
+      youtube: {
+        primary: '#ff0000',
+        hover: '#cc0000',
+        tabClass: 'active-yt',
+        placeholder: 'Dán link video YouTube (Shorts, Watch, youtu.be...) tại đây...',
+        errEmpty: 'Vui lòng dán liên kết video YouTube.',
+        errInvalid: 'Liên kết không hợp lệ. Vui lòng dán đúng liên kết YouTube (youtube.com, youtu.be...).',
+        loading: 'Đang trích xuất video YouTube, vui lòng chờ trong giây lát...',
+        success: 'Trích xuất video thành công! Nhấn vào chất lượng bên dưới để tải về.'
+      }
+    };
+
+    function setPlatform(platform) {
+      currentPlatform = platform;
+      const cfg = PLATFORM_CONFIG[platform];
+
+      // Update CSS variables
+      document.documentElement.style.setProperty('--primary', cfg.primary);
+      document.documentElement.style.setProperty('--primary-hover', cfg.hover);
+
+      // Update tabs
+      tabFb.className = 'tab' + (platform === 'facebook' ? ' ' + cfg.tabClass : '');
+      tabYt.className = 'tab' + (platform === 'youtube' ? ' ' + cfg.tabClass : '');
+
+      // Update logo icons
+      fbIcon.style.display = platform === 'facebook' ? '' : 'none';
+      ytIcon.style.display = platform === 'youtube' ? '' : 'none';
+
+      // Update placeholder
+      urlInput.placeholder = cfg.placeholder;
+      urlInput.value = '';
+
+      // Reset result and status
+      resultCard.classList.remove('visible');
+      videoPreview.pause();
+      videoPreview.removeAttribute('src');
+      clearStatus();
+    }
+
+    tabFb.addEventListener('click', function () { setPlatform('facebook'); });
+    tabYt.addEventListener('click', function () { setPlatform('youtube'); });
+
+    function setStatus(type, message) {
+      statusEl.className = 'status visible ' + type;
+      statusEl.innerHTML =
+        (type === 'info' ? '<div class="spinner"></div>' : '') +
+        '<span>' + message + '</span>';
+    }
+
+    function clearStatus() {
+      statusEl.className = 'status';
+      statusEl.innerHTML = '';
+    }
+
+    function showResult(data) {
+      // Set metadata
+      videoTitle.textContent = data.title || 'Video';
+      videoAuthor.textContent = data.uploader ? '👤 ' + data.uploader : '';
+      videoDuration.textContent = data.duration ? '⏱️ ' + data.duration : '';
+
+      if (data.thumbnail) {
+        videoThumb.src = data.thumbnail;
+        videoThumb.style.display = 'block';
+        videoPreview.poster = data.thumbnail;
+      } else {
+        videoThumb.style.display = 'none';
+      }
+
+      // Preview player
+      if (data.videoUrl) {
+        videoPreview.src = data.videoUrl;
+      }
+
+      // Download options
+      downloadOptions.innerHTML = '';
+      (data.qualities || []).forEach(function (q) {
+        const a = document.createElement('a');
+        a.href = q.downloadUrl || '#';
+        a.className = 'download-option' + (q.type === 'audio' ? ' audio' : '');
+        a.setAttribute('download', '');
+
+        const badgeText = q.type === 'audio' ? 'MP3' : (q.ext ? q.ext.toUpperCase() : 'MP4');
+
+        a.innerHTML =
+          '<div class="opt-left">' +
+            '<span class="badge">' + badgeText + '</span>' +
+            '<div>' +
+              '<div class="quality">' + q.label + '</div>' +
+              '<div class="size">' + (q.size || '') + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="download-icon">' +
+            '<svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>' +
+          '</div>';
+
+        downloadOptions.appendChild(a);
+      });
+
+      resultCard.classList.add('visible');
+    }
+
+    function isValidUrl(url) {
+      if (currentPlatform === 'facebook') {
+        return /https?:\/\/(www\.|web\.|m\.)?(facebook\.com|fb\.watch|fb\.gg)/i.test(url);
+      } else {
+        return /https?:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)/i.test(url);
+      }
+    }
+
+    fetchBtn.addEventListener('click', async function () {
+      const cfg = PLATFORM_CONFIG[currentPlatform];
+      const url = urlInput.value.trim();
+
+      if (!url) {
+        setStatus('error', cfg.errEmpty);
+        return;
+      }
+      if (!isValidUrl(url)) {
+        setStatus('error', cfg.errInvalid);
+        return;
+      }
+
+      fetchBtn.disabled = true;
+      resultCard.classList.remove('visible');
+      videoPreview.pause();
+      videoPreview.removeAttribute('src');
+      setStatus('info', cfg.loading);
+
+      try {
+        const res = await fetch('/api/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: url, platform: currentPlatform })
+        });
+
+        const text = await res.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error('Dữ liệu máy chủ trả về không hợp lệ. Vui lòng thử lại.');
+        }
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Không thể lấy thông tin video. Vui lòng thử lại sau.');
+        }
+
+        showResult(data);
+        setStatus('success', cfg.success);
+      } catch (err) {
+        setStatus('error', err.message || 'Đã xảy ra lỗi khi xử lý. Vui lòng thử lại.');
+      } finally {
+        fetchBtn.disabled = false;
+      }
+    });
+
+    urlInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') fetchBtn.click();
+    });
+  </script>
+</body>
+</html>
