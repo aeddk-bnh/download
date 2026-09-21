@@ -25,13 +25,18 @@ const FFMPEG_DIR = (isWin && fs.existsSync(localWinFfmpeg)) ? path.join(__dirnam
 const NODE_PATH = process.execPath;
 
 /**
- * Xử lý cookie YouTube nếu được cấu hình qua file hoặc biến môi trường (rất hữu ích khi deploy Cloud)
+ * Xử lý cookie YouTube nếu được cấu hình qua file hoặc biến môi trường
  */
 function getCookiesPath() {
   if (process.env.YOUTUBE_COOKIES) {
     const tmpCookies = path.join(os.tmpdir(), 'youtube_cookies.txt');
     try {
-      fs.writeFileSync(tmpCookies, process.env.YOUTUBE_COOKIES, 'utf8');
+      let cookiesContent = process.env.YOUTUBE_COOKIES.trim();
+      // Xử lý trường hợp người dùng copy/paste vào env bị chuyển thành literal \n
+      if (cookiesContent.includes('\\n') && !cookiesContent.includes('\n')) {
+        cookiesContent = cookiesContent.replace(/\\n/g, '\n');
+      }
+      fs.writeFileSync(tmpCookies, cookiesContent + '\n', 'utf8');
       return tmpCookies;
     } catch (e) {
       console.warn('Không thể tạo file cookies tạm:', e.message);
@@ -56,21 +61,23 @@ function getBaseYtDlpArgs(platform) {
     '--js-runtimes', `node:"${NODE_PATH}"`
   ];
 
-  // Ưu tiên client android/web để giảm thiểu bot check trên dải IP Datacenter
-  if (platform === 'youtube') {
+  const cookies = getCookiesPath();
+  if (cookies) {
+    args.push('--cookies', cookies);
+    // LƯU Ý QUAN TRỌNG:
+    // Khi đã có Cookies từ trình duyệt, TUYỆT ĐỐI KHÔNG dùng player_client=android
+    // vì Android client không tương thích với Web Cookies và sẽ gây lỗi:
+    // "Requested format is not available". Dùng client mặc định (web) khi có cookies.
+  } else if (platform === 'youtube') {
+    // Chỉ khi CHƯA có cookies mới thử dùng android client để né bot-check
     args.push(
       '--extractor-args',
-      'youtube:player_client=android,web;player_skip=configs,webpage'
+      'youtube:player_client=android,web'
     );
   }
 
   if (FFMPEG_DIR) {
     args.push('--ffmpeg-location', FFMPEG_DIR);
-  }
-
-  const cookies = getCookiesPath();
-  if (cookies) {
-    args.push('--cookies', cookies);
   }
 
   if (process.env.PROXY_URL) {
@@ -157,7 +164,7 @@ app.post('/api/download', (req, res) => {
       const errText = stderr || err.message || '';
       let userError = 'Không thể trích xuất video. Video có thể ở chế độ riêng tư, đã bị xóa hoặc liên kết không đúng.';
 
-      if (errText.includes("Sign in to confirm you're not a bot") || errText.includes('bot') || errText.includes('HTTP Error 429')) {
+      if (errText.includes("Sign in to confirm you're not a bot") || errText.includes('HTTP Error 429')) {
         userError = 'YouTube chặn IP máy chủ Cloud và yêu cầu xác thực Bot. Vui lòng thêm biến môi trường YOUTUBE_COOKIES trên Railway.';
       } else {
         const errorLines = errText.split('\n').filter(l => l.includes('ERROR:'));
