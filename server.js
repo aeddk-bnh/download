@@ -25,18 +25,40 @@ const FFMPEG_DIR = (isWin && fs.existsSync(localWinFfmpeg)) ? path.join(__dirnam
 const NODE_PATH = process.execPath;
 
 /**
+ * Chuẩn hóa một dòng cookie sang định dạng Netscape chuẩn (ngăn cách bằng ký tự TAB)
+ */
+function normalizeNetscapeLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith('#')) return line;
+  if (line.includes('\t')) return line;
+  // Nếu copy/paste bị chuyển tab thành khoảng trắng, tách và nối lại bằng tab
+  const parts = trimmed.split(/\s+/);
+  if (parts.length >= 7) {
+    const first6 = parts.slice(0, 6);
+    const rest = parts.slice(6).join(' ');
+    return first6.join('\t') + '\t' + rest;
+  }
+  return line;
+}
+
+/**
  * Xử lý cookie YouTube nếu được cấu hình qua file hoặc biến môi trường
  */
 function getCookiesPath() {
   if (process.env.YOUTUBE_COOKIES) {
     const tmpCookies = path.join(os.tmpdir(), 'youtube_cookies.txt');
     try {
-      let cookiesContent = process.env.YOUTUBE_COOKIES.trim();
-      // Xử lý trường hợp người dùng copy/paste vào env bị chuyển thành literal \n
-      if (cookiesContent.includes('\\n') && !cookiesContent.includes('\n')) {
-        cookiesContent = cookiesContent.replace(/\\n/g, '\n');
+      let raw = process.env.YOUTUBE_COOKIES.trim();
+      if (raw.includes('\\n') && !raw.includes('\n')) {
+        raw = raw.replace(/\\n/g, '\n');
       }
-      fs.writeFileSync(tmpCookies, cookiesContent + '\n', 'utf8');
+      // Chuẩn hóa từng dòng để đảm bảo các trường cách nhau bằng ký tự TAB chuẩn của Netscape
+      const lines = raw.split('\n').map(normalizeNetscapeLine);
+      let formattedContent = lines.join('\n');
+      if (!formattedContent.startsWith('# Netscape HTTP Cookie File')) {
+        formattedContent = '# Netscape HTTP Cookie File\n' + formattedContent;
+      }
+      fs.writeFileSync(tmpCookies, formattedContent + '\n', 'utf8');
       return tmpCookies;
     } catch (e) {
       console.warn('Không thể tạo file cookies tạm:', e.message);
@@ -64,15 +86,18 @@ function getBaseYtDlpArgs(platform) {
   const cookies = getCookiesPath();
   if (cookies) {
     args.push('--cookies', cookies);
-    // LƯU Ý QUAN TRỌNG:
-    // Khi đã có Cookies từ trình duyệt, TUYỆT ĐỐI KHÔNG dùng player_client=android
-    // vì Android client không tương thích với Web Cookies và sẽ gây lỗi:
-    // "Requested format is not available". Dùng client mặc định (web) khi có cookies.
+    if (platform === 'youtube') {
+      // Dùng web client chuẩn kèm cookies, loại trừ tv client (nguyên nhân gây "The page needs to be reloaded")
+      args.push(
+        '--extractor-args',
+        'youtube:player_client=web,mweb;player_skip=configs'
+      );
+    }
   } else if (platform === 'youtube') {
-    // Chỉ khi CHƯA có cookies mới thử dùng android client để né bot-check
+    // Khi chưa có cookies, fallback sang android/web
     args.push(
       '--extractor-args',
-      'youtube:player_client=android,web'
+      'youtube:player_client=android,web;player_skip=configs'
     );
   }
 
