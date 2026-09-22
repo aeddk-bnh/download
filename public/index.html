@@ -294,12 +294,38 @@
       flex-wrap: wrap;
     }
 
+    .preview-section {
+      margin-bottom: 16px;
+    }
+
+    .btn-preview {
+      width: 100%;
+      padding: 10px;
+      background: #f0f2f5;
+      color: #1c1e21;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .btn-preview:hover {
+      background: #e4e6eb;
+    }
+
     .video-preview {
       width: 100%;
       border-radius: 8px;
       background: #000;
-      margin-bottom: 16px;
+      margin-top: 10px;
       overflow: hidden;
+      display: none;
     }
 
     .video-preview video {
@@ -476,9 +502,14 @@
         </div>
       </div>
 
-      <!-- Video Preview -->
-      <div class="video-preview">
-        <video id="videoPreview" controls preload="none"></video>
+      <!-- Preview Section -->
+      <div class="preview-section">
+        <button class="btn-preview" id="togglePreviewBtn">
+          ▶ Xem trước video
+        </button>
+        <div class="video-preview" id="previewContainer">
+          <video id="videoPreview" controls preload="none"></video>
+        </div>
       </div>
 
       <!-- Download Options List -->
@@ -490,8 +521,8 @@
     <div class="card features">
       <div class="feature">
         <div class="icon">⚡</div>
-        <h3>Tốc độ cao</h3>
-        <p>Phân giải link tức thì và tải luồng trực tiếp</p>
+        <h3>Tốc độ tối đa</h3>
+        <p>Tải song song 5 luồng phân đoạn tức thì</p>
       </div>
       <div class="feature">
         <div class="icon">🎬</div>
@@ -515,6 +546,8 @@
     const fetchBtn = document.getElementById('fetchBtn');
     const statusEl = document.getElementById('status');
     const resultCard = document.getElementById('resultCard');
+    const previewContainer = document.getElementById('previewContainer');
+    const togglePreviewBtn = document.getElementById('togglePreviewBtn');
     const videoPreview = document.getElementById('videoPreview');
     const videoThumb = document.getElementById('videoThumb');
     const videoTitle = document.getElementById('videoTitle');
@@ -528,6 +561,7 @@
     const tabYt = document.getElementById('tabYt');
 
     let currentPlatform = 'facebook';
+    let currentPreviewUrl = '';
 
     const PLATFORM_CONFIG = {
       facebook: {
@@ -556,26 +590,20 @@
       currentPlatform = platform;
       const cfg = PLATFORM_CONFIG[platform];
 
-      // Update CSS variables
       document.documentElement.style.setProperty('--primary', cfg.primary);
       document.documentElement.style.setProperty('--primary-hover', cfg.hover);
 
-      // Update tabs
       tabFb.className = 'tab' + (platform === 'facebook' ? ' ' + cfg.tabClass : '');
       tabYt.className = 'tab' + (platform === 'youtube' ? ' ' + cfg.tabClass : '');
 
-      // Update logo icons
       fbIcon.style.display = platform === 'facebook' ? '' : 'none';
       ytIcon.style.display = platform === 'youtube' ? '' : 'none';
 
-      // Update placeholder
       urlInput.placeholder = cfg.placeholder;
       urlInput.value = '';
 
-      // Reset result and status
+      stopPreview();
       resultCard.classList.remove('visible');
-      videoPreview.pause();
-      videoPreview.removeAttribute('src');
       clearStatus();
     }
 
@@ -594,6 +622,27 @@
       statusEl.innerHTML = '';
     }
 
+    function stopPreview() {
+      videoPreview.pause();
+      videoPreview.removeAttribute('src');
+      videoPreview.load();
+      previewContainer.style.display = 'none';
+      togglePreviewBtn.textContent = '▶ Xem trước video';
+    }
+
+    togglePreviewBtn.addEventListener('click', function () {
+      if (previewContainer.style.display === 'none' || !previewContainer.style.display) {
+        if (currentPreviewUrl) {
+          videoPreview.src = currentPreviewUrl;
+          videoPreview.play();
+        }
+        previewContainer.style.display = 'block';
+        togglePreviewBtn.textContent = '⏹ Tắt xem trước';
+      } else {
+        stopPreview();
+      }
+    });
+
     function showResult(data) {
       // Set metadata
       videoTitle.textContent = data.title || 'Video';
@@ -608,10 +657,8 @@
         videoThumb.style.display = 'none';
       }
 
-      // Preview player
-      if (data.videoUrl) {
-        videoPreview.src = data.videoUrl;
-      }
+      currentPreviewUrl = data.videoUrl || '';
+      stopPreview();
 
       // Download options
       downloadOptions.innerHTML = '';
@@ -620,6 +667,12 @@
         a.href = q.downloadUrl || '#';
         a.className = 'download-option' + (q.type === 'audio' ? ' audio' : '');
         a.setAttribute('download', '');
+
+        // Dừng preview ngay khi người dùng bấm tải để dồn 100% băng thông cho download
+        a.addEventListener('click', function () {
+          stopPreview();
+          setStatus('info', 'Đang bắt đầu tải xuống tốc độ cao: ' + q.label + '...');
+        });
 
         const badgeText = q.type === 'audio' ? 'MP3' : (q.ext ? q.ext.toUpperCase() : 'MP4');
 
@@ -663,9 +716,8 @@
       }
 
       fetchBtn.disabled = true;
+      stopPreview();
       resultCard.classList.remove('visible');
-      videoPreview.pause();
-      videoPreview.removeAttribute('src');
       setStatus('info', cfg.loading);
 
       try {

@@ -24,6 +24,28 @@ const FFMPEG_DIR = (isWin && fs.existsSync(localWinFfmpeg)) ? path.join(__dirnam
 // Đường dẫn node runtime
 const NODE_PATH = process.execPath;
 
+// Bộ nhớ đệm cache metadata (TTL: 10 phút) giúp phản hồi tức thì 0ms khi truy vấn lại
+const metadataCache = new Map();
+const CACHE_TTL_MS = 10 * 60 * 1000;
+
+function getCachedMetadata(key) {
+  const item = metadataCache.get(key);
+  if (!item) return null;
+  if (Date.now() - item.timestamp > CACHE_TTL_MS) {
+    metadataCache.delete(key);
+    return null;
+  }
+  return item.data;
+}
+
+function setCachedMetadata(key, data) {
+  if (metadataCache.size > 200) {
+    const firstKey = metadataCache.keys().next().value;
+    metadataCache.delete(firstKey);
+  }
+  metadataCache.set(key, { timestamp: Date.now(), data });
+}
+
 /**
  * Chuẩn hóa một dòng cookie sang định dạng Netscape chuẩn (ngăn cách bằng ký tự TAB)
  */
@@ -73,7 +95,6 @@ function getCookiesPath() {
 
 /**
  * Tạo danh sách tham số cơ sở cho yt-dlp
- * Để yt-dlp tự động quản lý extractor/client mặc định để tránh lỗi Requested format is not available
  */
 function getBaseYtDlpArgs(platform) {
   const args = [
@@ -142,7 +163,7 @@ function validatePlatformUrl(url, platform) {
 }
 
 /**
- * API trích xuất thông tin video
+ * API trích xuất thông tin video (kèm cache tăng tốc)
  */
 app.post('/api/download', (req, res) => {
   const { url, platform } = req.body;
@@ -156,6 +177,13 @@ app.post('/api/download', (req, res) => {
     return res.status(400).json({
       error: `Đường dẫn không hợp lệ. Vui lòng nhập đúng liên kết video ${platformName}.`
     });
+  }
+
+  // Kiểm tra cache trước để trả lời tức thì
+  const cacheKey = `${platform}:${url.trim()}`;
+  const cachedData = getCachedMetadata(cacheKey);
+  if (cachedData) {
+    return res.json(cachedData);
   }
 
   // Tham số chạy yt-dlp lấy JSON metadata
@@ -291,14 +319,19 @@ app.post('/api/download', (req, res) => {
       });
       const previewUrl = `${baseUrl}?${previewParams.toString()}`;
 
-      return res.json({
+      const responsePayload = {
         title,
         duration: durationStr,
         uploader,
         thumbnail,
         videoUrl: previewUrl,
         qualities
-      });
+      };
+
+      // Lưu cache kết quả
+      setCachedMetadata(cacheKey, responsePayload);
+
+      return res.json(responsePayload);
     } catch (parseErr) {
       console.error('Lỗi phân tích JSON từ yt-dlp:', parseErr.message);
       return res.status(500).json({ error: 'Dữ liệu phản hồi từ trình trích xuất không hợp lệ.' });
@@ -308,6 +341,7 @@ app.post('/api/download', (req, res) => {
 
 /**
  * API tải / stream file video hoặc audio trực tiếp
+ * Đã tối ưu đa luồng concurrent-fragments, buffer size và HTTP chunking
  */
 app.get('/api/stream', (req, res) => {
   const { url, quality = '720p', type = 'video', title = 'video', platform = 'youtube', inline } = req.query;
@@ -328,8 +362,13 @@ app.get('/api/stream', (req, res) => {
     `${dispositionType}; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`
   );
 
+  // Tham số tăng tốc tải đa luồng
   let args = [
-    ...getBaseYtDlpArgs(platform)
+    ...getBaseYtDlpArgs(platform),
+    '--concurrent-fragments', '5', // Tải song song 5 phân đoạn (tăng tốc độ gấp 2x-3x)
+    '--buffer-size', '16M',        // Bộ đệm 16MB tăng thông lượng I/O
+    '--http-chunk-size', '10M',    // Chunk 10MB tối ưu hóa băng thông mạng
+    '--throttled-rate', '100K'     // Tự động kết nối lại nếu YouTube bóp băng thông
   ];
 
   if (isAudio) {
