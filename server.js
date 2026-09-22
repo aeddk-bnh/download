@@ -24,7 +24,7 @@ const FFMPEG_DIR = (isWin && fs.existsSync(localWinFfmpeg)) ? path.join(__dirnam
 // Đường dẫn node runtime
 const NODE_PATH = process.execPath;
 
-// Bộ nhớ đệm cache metadata (TTL: 10 phút) giúp phản hồi tức thì 0ms khi truy vấn lại
+// Bộ nhớ đệm cache metadata (TTL: 10 phút)
 const metadataCache = new Map();
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -96,16 +96,18 @@ function getCookiesPath() {
 /**
  * Tạo danh sách tham số cơ sở cho yt-dlp
  */
-function getBaseYtDlpArgs(platform) {
+function getBaseYtDlpArgs(platform, options = { useCookies: true }) {
   const args = [
     '--no-warnings',
     '--no-playlist',
     '--js-runtimes', `node:"${NODE_PATH}"`
   ];
 
-  const cookies = getCookiesPath();
-  if (cookies) {
-    args.push('--cookies', cookies);
+  if (options.useCookies) {
+    const cookies = getCookiesPath();
+    if (cookies) {
+      args.push('--cookies', cookies);
+    }
   }
 
   if (FFMPEG_DIR) {
@@ -163,7 +165,77 @@ function validatePlatformUrl(url, platform) {
 }
 
 /**
- * API trích xuất thông tin video (kèm cache tăng tốc)
+ * Cơ chế trích xuất thông minh đa tầng (Smart Multi-Tier Fallback)
+ * Tự động vượt qua các lỗi: "The page needs to be reloaded", "Requested format is not available", "Bot check"
+ */
+function extractVideoMetadataWithFallback(url, platform, callback) {
+  // Tầng 1: Sử dụng cấu hình tiêu chuẩn (kèm cookies nếu có)
+  const argsTier1 = [
+    '--dump-json',
+    ...getBaseYtDlpArgs(platform, { useCookies: true }),
+    url
+  ];
+
+  execFile(YT_DLP_PATH, argsTier1, { maxBuffer: 15 * 1024 * 1024, timeout: 45000 }, (err1, stdout1, stderr1) => {
+    if (!err1 && stdout1) {
+      try {
+        const data = JSON.parse(stdout1);
+        return callback(null, data, 'default');
+      } catch (e) {}
+    }
+
+    // Nếu không phải YouTube hoặc timeout thì kết thúc
+    if (platform !== 'youtube' || (err1 && err1.killed)) {
+      return callback(err1, null, 'default', stderr1);
+    }
+
+    const err1Text = (stderr1 || err1.message || '').trim();
+    console.log(`[YouTube] Tầng 1 gặp lỗi (${err1Text.split('\n')[0]}). Đang tự động kích hoạt Tầng 2 (Android Client)...`);
+
+    // Tầng 2: Fallback sang Android Client (không dùng cookies để tránh xung đột định dạng)
+    // Client Android rất bền bỉ, không bị lỗi "The page needs to be reloaded"
+    const argsTier2 = [
+      '--dump-json',
+      ...getBaseYtDlpArgs(platform, { useCookies: false }),
+      '--extractor-args', 'youtube:player_client=android',
+      url
+    ];
+
+    execFile(YT_DLP_PATH, argsTier2, { maxBuffer: 15 * 1024 * 1024, timeout: 45000 }, (err2, stdout2, stderr2) => {
+      if (!err2 && stdout2) {
+        try {
+          const data = JSON.parse(stdout2);
+          return callback(null, data, 'android');
+        } catch (e) {}
+      }
+
+      const err2Text = (stderr2 || err2.message || '').trim();
+      console.log(`[YouTube] Tầng 2 gặp lỗi (${err2Text.split('\n')[0]}). Đang tự động kích hoạt Tầng 3 (iOS Client)...`);
+
+      // Tầng 3: Fallback sang iOS Client
+      const argsTier3 = [
+        '--dump-json',
+        ...getBaseYtDlpArgs(platform, { useCookies: false }),
+        '--extractor-args', 'youtube:player_client=ios',
+        url
+      ];
+
+      execFile(YT_DLP_PATH, argsTier3, { maxBuffer: 15 * 1024 * 1024, timeout: 45000 }, (err3, stdout3, stderr3) => {
+        if (!err3 && stdout3) {
+          try {
+            const data = JSON.parse(stdout3);
+            return callback(null, data, 'ios');
+          } catch (e) {}
+        }
+
+        return callback(err3 || err2 || err1, null, 'default', stderr3 || stderr2 || stderr1);
+      });
+    });
+  });
+}
+
+/**
+ * API trích xuất thông tin video (kèm cache tăng tốc và fallback thông minh)
  */
 app.post('/api/download', (req, res) => {
   const { url, platform } = req.body;
@@ -186,21 +258,14 @@ app.post('/api/download', (req, res) => {
     return res.json(cachedData);
   }
 
-  // Tham số chạy yt-dlp lấy JSON metadata
-  const args = [
-    '--dump-json',
-    ...getBaseYtDlpArgs(platform),
-    url
-  ];
-
-  execFile(YT_DLP_PATH, args, { maxBuffer: 15 * 1024 * 1024, timeout: 45000 }, (err, stdout, stderr) => {
-    if (err) {
-      console.error('Lỗi khi trích xuất video:', stderr || err.message);
-      if (err.killed) {
+  extractVideoMetadataWithFallback(url, platform, (err, data, activeClient, stderr) => {
+    if (err || !data) {
+      console.error('Lỗi khi trích xuất video:', stderr || (err && err.message));
+      if (err && err.killed) {
         return res.status(504).json({ error: 'Quá thời gian xử lý khi trích xuất video. Vui lòng thử lại.' });
       }
 
-      const errText = stderr || err.message || '';
+      const errText = stderr || (err && err.message) || '';
       let userError = 'Không thể trích xuất video. Video có thể ở chế độ riêng tư, đã bị xóa hoặc liên kết không đúng.';
 
       if (errText.includes("Sign in to confirm you're not a bot") || errText.includes('HTTP Error 429')) {
@@ -219,7 +284,6 @@ app.post('/api/download', (req, res) => {
     }
 
     try {
-      const data = JSON.parse(stdout);
       const title = data.title || 'Video';
       const durationStr = formatDuration(data.duration);
       const uploader = data.uploader || data.channel || data.creator || '';
@@ -292,7 +356,7 @@ app.post('/api/download', (req, res) => {
         ];
       }
 
-      // Đính kèm download URL cho từng chất lượng
+      // Đính kèm download URL cho từng chất lượng với activeClient tương ứng
       const baseUrl = '/api/stream';
       qualities = qualities.map((q) => {
         const queryParams = new URLSearchParams({
@@ -300,7 +364,8 @@ app.post('/api/download', (req, res) => {
           quality: q.quality,
           type: q.type,
           title: title,
-          platform: platform
+          platform: platform,
+          client: activeClient
         });
         return {
           ...q,
@@ -315,6 +380,7 @@ app.post('/api/download', (req, res) => {
         type: 'video',
         title: title,
         platform: platform,
+        client: activeClient,
         inline: '1'
       });
       const previewUrl = `${baseUrl}?${previewParams.toString()}`;
@@ -333,7 +399,7 @@ app.post('/api/download', (req, res) => {
 
       return res.json(responsePayload);
     } catch (parseErr) {
-      console.error('Lỗi phân tích JSON từ yt-dlp:', parseErr.message);
+      console.error('Lỗi xử lý metadata:', parseErr.message);
       return res.status(500).json({ error: 'Dữ liệu phản hồi từ trình trích xuất không hợp lệ.' });
     }
   });
@@ -341,10 +407,10 @@ app.post('/api/download', (req, res) => {
 
 /**
  * API tải / stream file video hoặc audio trực tiếp
- * Đã tối ưu đa luồng concurrent-fragments, buffer size và HTTP chunking
+ * Hỗ trợ đa luồng concurrent-fragments, buffer size và client phù hợp
  */
 app.get('/api/stream', (req, res) => {
-  const { url, quality = '720p', type = 'video', title = 'video', platform = 'youtube', inline } = req.query;
+  const { url, quality = '720p', type = 'video', title = 'video', platform = 'youtube', client = 'default', inline } = req.query;
 
   if (!url) {
     return res.status(400).send('Thiếu tham số URL.');
@@ -362,14 +428,20 @@ app.get('/api/stream', (req, res) => {
     `${dispositionType}; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`
   );
 
-  // Tham số tăng tốc tải đa luồng
+  // Nếu client là android hoặc ios, không dùng cookies web để tránh xung đột
+  const useCookies = (client === 'default');
+
   let args = [
-    ...getBaseYtDlpArgs(platform),
-    '--concurrent-fragments', '5', // Tải song song 5 phân đoạn (tăng tốc độ gấp 2x-3x)
-    '--buffer-size', '16M',        // Bộ đệm 16MB tăng thông lượng I/O
-    '--http-chunk-size', '10M',    // Chunk 10MB tối ưu hóa băng thông mạng
-    '--throttled-rate', '100K'     // Tự động kết nối lại nếu YouTube bóp băng thông
+    ...getBaseYtDlpArgs(platform, { useCookies }),
+    '--concurrent-fragments', '5',
+    '--buffer-size', '16M',
+    '--http-chunk-size', '10M',
+    '--throttled-rate', '100K'
   ];
+
+  if (platform === 'youtube' && client && client !== 'default') {
+    args.push('--extractor-args', `youtube:player_client=${client}`);
+  }
 
   if (isAudio) {
     args.push('-x', '--audio-format', 'mp3', '-o', '-', url);
