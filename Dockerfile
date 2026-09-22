@@ -1,7 +1,7 @@
 # Sử dụng Node.js 20 trên nền Debian slim
 FROM node:20-slim
 
-# Cài đặt ffmpeg, python3, pip, git, curl và yt-dlp bản master mới nhất từ GitHub
+# Cài đặt ffmpeg, python3, pip, git, curl và yt-dlp bản master kèm yt-dlp-ejs (chống bóp băng thông n-parameter 1MB/s)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     python3 \
@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     ca-certificates \
-    && pip install --no-cache-dir --break-system-packages -U "git+https://github.com/yt-dlp/yt-dlp.git" \
+    && pip install --no-cache-dir --break-system-packages -U "git+https://github.com/yt-dlp/yt-dlp.git" yt-dlp-ejs curl_cffi \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

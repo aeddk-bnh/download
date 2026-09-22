@@ -100,7 +100,7 @@ function getBaseYtDlpArgs(platform, options = { useCookies: true }) {
   const args = [
     '--no-warnings',
     '--no-playlist',
-    '--js-runtimes', `node:"${NODE_PATH}"`
+    '--js-runtimes', 'node'
   ];
 
   if (options.useCookies) {
@@ -433,7 +433,7 @@ app.get('/api/stream', (req, res) => {
 
   let args = [
     ...getBaseYtDlpArgs(platform, { useCookies }),
-    '--concurrent-fragments', '5',
+    '--concurrent-fragments', '8',
     '--buffer-size', '16M',
     '--http-chunk-size', '10M',
     '--throttled-rate', '100K'
